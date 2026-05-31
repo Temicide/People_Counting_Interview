@@ -1,18 +1,19 @@
 # Entrance People Counting
 
 This project counts people crossing an entrance in `resources/data/entrance.mov`.
-The analysis is implemented as a reproducible Jupyter notebook in `src.ipynb`.
+The implementation is a production Python package with a command-line entrypoint.
 
-The current notebook uses a tracking-by-detection pipeline:
+The pipeline uses:
 
-- YOLOv8n detects people frame by frame.
-- ByteTrack assigns stable track IDs through Ultralytics.
-- A doorway threshold line is used to count crossing events.
-- The bottom-center of each person box is used as the tracked point because it approximates the person's contact point with the floor.
+- YOLOv8 person detection.
+- ByteTrack tracking through Ultralytics.
+- A doorway threshold line for directional crossing events.
+- The bottom-center of each person box as the tracked floor-contact point.
+- Jitter suppression, late track initialization handling, and per-track cooldown.
 
-## Current Result
+## Current Baseline
 
-The latest generated summary in `output/entrance_people_count_summary.csv` reports:
+The latest validated run against `resources/data/entrance.mov` produced:
 
 | Metric | Value |
 | --- | ---: |
@@ -22,14 +23,32 @@ The latest generated summary in `output/entrance_people_count_summary.csv` repor
 | Out count | 18 |
 | Total crossings | 25 |
 
-The total is a crossing-event count, not a frame-level occupancy count. A person standing near the doorway is counted only when their tracked bottom-center crosses the entrance threshold.
+The total is a crossing-event count, not a frame-level occupancy count.
 
 ## Project Structure
 
 ```text
 .
-├── src.ipynb
+├── pyproject.toml
 ├── requirements.txt
+├── src
+│   └── entrance_counter
+│       ├── __init__.py
+│       ├── __main__.py
+│       ├── cli.py
+│       ├── config.py
+│       ├── geometry.py
+│       ├── modeling.py
+│       ├── pipeline.py
+│       ├── rendering.py
+│       └── video_io.py
+├── tests
+│   ├── test_cli.py
+│   ├── test_config.py
+│   ├── test_geometry.py
+│   ├── test_modeling.py
+│   ├── test_pipeline.py
+│   └── test_video_rendering.py
 ├── resources
 │   ├── data
 │   │   └── entrance.mov
@@ -46,42 +65,45 @@ The total is a crossing-event count, not a frame-level occupancy count. A person
 
 Keep raw input media under `resources/data/`. Generated files belong under `output/`.
 
-## Quick Start
+## Setup
 
 Create a local Python environment:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-pip install jupyter nbconvert
+pip install -e ".[dev]"
 ```
 
-Run the notebook interactively:
+The first full run uses `output/models/yolov8n.pt` when present. If the weight file is missing, Ultralytics downloads it.
+
+## Run
+
+Generate the ROI preview, annotated video, event log, and summary CSV:
 
 ```bash
-jupyter notebook src.ipynb
+entrance-counter --video resources/data/entrance.mov --output-dir output
 ```
 
-Or execute it from a clean kernel to validate reproducibility:
+Equivalent module invocation:
 
 ```bash
-jupyter nbconvert --to notebook --execute src.ipynb --output output/executed.ipynb
+python -m entrance_counter --video resources/data/entrance.mov --output-dir output
 ```
 
-The first notebook cell installs missing runtime packages such as OpenCV, NumPy, pandas, matplotlib, PyTorch, Ultralytics, and `lap`.
+For a short smoke run:
 
-## Notebook Workflow
+```bash
+entrance-counter --video resources/data/entrance.mov --output-dir output --max-frames 300 --skip-annotated-video --no-preview
+```
 
-`src.ipynb` runs these steps from top to bottom:
+## Test
 
-1. Prepare runtime imports and paths.
-2. Load `resources/data/entrance.mov`.
-3. Configure the YOLO model, confidence threshold, image size, and counting line.
-4. Save an ROI preview with the entrance threshold drawn on a sampled frame.
-5. Run YOLOv8n person detection with ByteTrack tracking.
-6. Count each qualifying line crossing with jitter suppression and a late-initialization buffer.
-7. Save the annotated video, event log, and summary CSV.
+Run the automated tests:
+
+```bash
+python -m pytest -q
+```
 
 ## Outputs
 
@@ -91,20 +113,21 @@ Generated artifacts are written to `output/`:
 - `entrance_people_count_annotated.mp4`: processed video with boxes, tracks, crossing line, and live counts.
 - `entrance_people_count_events.csv`: one row per counted crossing event.
 - `entrance_people_count_summary.csv`: run metadata and final directional totals.
-- `models/yolov8n.pt`: downloaded YOLO model weights, when available locally.
+- `models/yolov8n.pt`: local YOLO model weights, when available.
 
-## Tuning Notes
+## Tuning
 
-The main parameters live near the top of `src.ipynb`:
+The main parameters are exposed through CLI flags:
 
-- `COUNTING_LINE`: doorway threshold coordinates.
-- `CONFIDENCE`: YOLO detection confidence threshold.
-- `IMAGE_SIZE`: inference image size.
-- `PROCESS_EVERY_N_FRAMES`: frame sampling rate.
-- `MAX_FRAMES`: optional cap for quick test runs.
-- `INVERT_DIRECTIONS`: flips the `in` and `out` direction convention.
+- `--line x1,y1,x2,y2`: doorway threshold coordinates.
+- `--confidence`: YOLO detection confidence threshold.
+- `--image-size`: inference image size.
+- `--process-every-n-frames`: frame sampling rate.
+- `--max-frames`: optional cap for quick runs.
+- `--invert-directions`: flips the `in` and `out` direction convention.
 
-If the ROI preview shows the threshold in the wrong place, adjust `COUNTING_LINE` first. If visual review shows that the direction labels are reversed, set `INVERT_DIRECTIONS = True`.
+If the ROI preview shows the threshold in the wrong place, adjust `--line` first.
+If visual review shows that direction labels are reversed, use `--invert-directions`.
 
 ## Reference Material
 

@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "entrance-counter"
+version = "0.1.0"
+description = "Production Python pipeline for entrance people counting with YOLO and ByteTrack."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "opencv-python>=4.9,<5",
+    "numpy>=1.26,<3",
+    "pandas>=2.2,<3",
+    "torch>=2.2",
+    "ultralytics>=8.2",
+    "lap>=0.5.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+entrance-counter = "entrance_counter.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
