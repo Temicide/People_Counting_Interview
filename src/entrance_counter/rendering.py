@@ -60,8 +60,10 @@ def draw_annotations(
     frame_idx: int,
     fps: float,
     config: CountingConfig,
+    line: Line | None = None,
 ) -> np.ndarray:
-    annotated = draw_counting_line(frame, config.line, config, thickness=4)
+    display_line = line if line is not None else config.line
+    annotated = draw_counting_line(frame, display_line, config, thickness=4)
 
     for xyxy, track_id in zip(boxes_xyxy, track_ids):
         x1, y1, x2, y2 = map(int, xyxy)

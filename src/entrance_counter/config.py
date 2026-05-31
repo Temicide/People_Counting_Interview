@@ -52,6 +52,7 @@ class CountingConfig:
     min_displacement_px: float = 18.0
     late_init_buffer_px: float = 45.0
     late_init_max_age_frames: int = 18
+    max_track_gap_frames: int = 45
     draw_track_history: bool = True
 
     def __post_init__(self) -> None:
@@ -63,6 +64,8 @@ class CountingConfig:
             raise ValueError("count_cooldown_frames must be non-negative")
         if self.min_displacement_px < 0:
             raise ValueError("min_displacement_px must be non-negative")
+        if self.max_track_gap_frames < 0:
+            raise ValueError("max_track_gap_frames must be non-negative")
 
 
 @dataclass(frozen=True)

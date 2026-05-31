@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from entrance_counter.config import CountingConfig, ModelConfig, PathConfig, ProcessingConfig, RunConfig
+from entrance_counter.config import CountingConfig, ModelConfig, PathConfig, ProcessingConfig, RunConfig, StabilizationConfig
 from entrance_counter.pipeline import PeopleCounter
 
 
@@ -100,3 +100,68 @@ def test_people_counter_counts_crossing_and_writes_csvs(tmp_path: Path) -> None:
     assert int(summary["in_count"]) == 0
     assert int(summary["out_count"]) == 1
     assert int(summary["total_count"]) == 1
+
+
+def test_people_counter_uses_stabilized_reference_points_for_crossing(tmp_path: Path) -> None:
+    video_path = tmp_path / "entrance.mp4"
+    _write_video(video_path, frame_count=5)
+    output_dir = tmp_path / "output"
+    fake_model = FakeModel(
+        frames=[
+            [(_box_with_bottom_center_y(30.0), 7, 0.90)],
+            [(_box_with_bottom_center_y(35.0), 7, 0.91)],
+            [(_box_with_bottom_center_y(40.0), 7, 0.92)],
+            [(_box_with_bottom_center_y(90.0), 7, 0.93)],
+            [(_box_with_bottom_center_y(100.0), 7, 0.94)],
+        ]
+    )
+    config = RunConfig(
+        paths=PathConfig(project_root=tmp_path, video_path=video_path, output_dir=output_dir),
+        counting=CountingConfig(line=((10, 50), (90, 50))),
+        model=ModelConfig(model_name="fake.pt"),
+        processing=ProcessingConfig(max_frames=5),
+        stabilization=StabilizationConfig(enabled=True, reference_second=0.0),
+    )
+
+    result = PeopleCounter(
+        config=config,
+        model=fake_model,
+        device="cpu",
+        transform_provider=lambda frame, frame_idx: np.array([[1.0, 0.0, 0.0], [0.0, 1.0, -10.0]], dtype=float),
+    ).run(write_annotated_video=False, progress_every=0)
+
+    assert len(result.events) == 1
+    assert result.events.iloc[0]["bottom_center_y"] == 90.0
+    assert result.events.iloc[0]["reference_bottom_center_y"] == 80.0
+    assert bool(result.summary.iloc[0]["stabilization_enabled"]) is True
+
+
+def test_people_counter_resets_stale_track_before_crossing(tmp_path: Path) -> None:
+    video_path = tmp_path / "entrance.mp4"
+    _write_video(video_path, frame_count=8)
+    output_dir = tmp_path / "output"
+    fake_model = FakeModel(
+        frames=[
+            [(_box_with_bottom_center_y(20.0), 7, 0.90)],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [(_box_with_bottom_center_y(90.0), 7, 0.94)],
+        ]
+    )
+    config = RunConfig(
+        paths=PathConfig(project_root=tmp_path, video_path=video_path, output_dir=output_dir),
+        counting=CountingConfig(line=((10, 50), (90, 50)), max_track_gap_frames=3),
+        model=ModelConfig(model_name="fake.pt"),
+        processing=ProcessingConfig(max_frames=8),
+    )
+
+    result = PeopleCounter(config=config, model=fake_model, device="cpu").run(
+        write_annotated_video=False,
+        progress_every=0,
+    )
+
+    assert len(result.events) == 0

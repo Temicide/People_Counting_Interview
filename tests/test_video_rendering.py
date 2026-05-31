@@ -83,3 +83,23 @@ def test_draw_annotations_handles_empty_tracks() -> None:
 
     assert annotated.shape == frame.shape
     assert int(annotated.sum()) > 0
+
+
+def test_draw_annotations_accepts_frame_specific_line() -> None:
+    frame = np.zeros((120, 160, 3), dtype=np.uint8)
+    config = CountingConfig(line=((20, 60), (120, 60)))
+
+    annotated = draw_annotations(
+        frame=frame,
+        boxes_xyxy=np.empty((0, 4), dtype=float),
+        track_ids=np.empty((0,), dtype=int),
+        states={},
+        counts={"in": 1, "out": 2},
+        frame_idx=30,
+        fps=10.0,
+        config=config,
+        line=((30, 70), (130, 70)),
+    )
+
+    assert annotated.shape == frame.shape
+    assert int(annotated[70].sum()) > 0

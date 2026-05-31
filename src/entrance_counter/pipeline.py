@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import cv2
+import numpy as np
 import pandas as pd
 
 from entrance_counter.config import RunConfig, display_path
@@ -18,9 +20,13 @@ from entrance_counter.geometry import (
     maybe_late_init_crossing,
     movement_direction,
     normalized_line_side,
+    reset_track_state,
+    transform_line,
+    transform_point,
 )
 from entrance_counter.modeling import choose_device, extract_track_outputs, load_yolo_model
 from entrance_counter.rendering import draw_annotations, draw_counting_line
+from entrance_counter.stabilization import FrameStabilizer, invert_affine
 from entrance_counter.video_io import create_video_writer, ensure_output_dirs, frame_at, read_video_metadata
 
 EVENT_COLUMNS = [
@@ -32,7 +38,10 @@ EVENT_COLUMNS = [
     "counted_by",
     "bottom_center_x",
     "bottom_center_y",
+    "reference_bottom_center_x",
+    "reference_bottom_center_y",
     "confidence",
+    "stabilization_valid",
     "in_count",
     "out_count",
     "total_count",
@@ -49,10 +58,17 @@ class CountingResult:
 
 
 class PeopleCounter:
-    def __init__(self, config: RunConfig, model: Any | None = None, device: str | int | None = None) -> None:
+    def __init__(
+        self,
+        config: RunConfig,
+        model: Any | None = None,
+        device: str | int | None = None,
+        transform_provider: Callable[[np.ndarray, int], np.ndarray | None] | None = None,
+    ) -> None:
         self.config = config
         self.model = model
         self.device = device
+        self.transform_provider = transform_provider
 
     def _model(self) -> Any:
         if self.model is None:
@@ -88,6 +104,13 @@ class PeopleCounter:
         fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         output_fps = fps / max(self.config.processing.process_every_n_frames, 1)
+
+        stabilizer = None
+        if self.config.stabilization.enabled and self.transform_provider is None:
+            last_second = max((frame_count - 1) / max(fps, 1e-6), 0.0)
+            reference_second = min(max(self.config.stabilization.reference_second, 0.0), last_second)
+            reference_frame = frame_at(self.config.paths.video_path, reference_second)
+            stabilizer = FrameStabilizer(self.config.stabilization, reference_frame)
 
         writer = None
         if write_annotated_video:
@@ -129,11 +152,32 @@ class PeopleCounter:
                 result = results[0]
                 boxes_xyxy, track_ids, confs = extract_track_outputs(result)
 
+                current_to_reference = None
+                reference_to_current = None
+                stabilization_valid = False
+                if self.transform_provider is not None:
+                    current_to_reference = self.transform_provider(frame, frame_idx)
+                    if current_to_reference is not None:
+                        reference_to_current = invert_affine(current_to_reference)
+                        stabilization_valid = True
+                elif stabilizer is not None:
+                    transform = stabilizer.estimate(frame)
+                    current_to_reference = transform.current_to_reference
+                    reference_to_current = transform.reference_to_current
+                    stabilization_valid = transform.valid
+
                 for xyxy, track_id, conf in zip(boxes_xyxy, track_ids, confs):
                     tid = int(track_id)
                     state = states[tid]
-                    point = bottom_center_xy(xyxy)
+                    image_point = bottom_center_xy(xyxy)
+                    point = transform_point(image_point, current_to_reference)
                     side = normalized_line_side(point, self.config.counting.line)
+
+                    if (
+                        state.last_seen_frame is not None
+                        and frame_idx - state.last_seen_frame > self.config.counting.max_track_gap_frames
+                    ):
+                        reset_track_state(state)
 
                     if state.first_frame is None:
                         state.first_frame = frame_idx
@@ -193,9 +237,12 @@ class PeopleCounter:
                                 "track_id": tid,
                                 "direction": counted_direction,
                                 "counted_by": counted_by,
-                                "bottom_center_x": point[0],
-                                "bottom_center_y": point[1],
+                                "bottom_center_x": image_point[0],
+                                "bottom_center_y": image_point[1],
+                                "reference_bottom_center_x": point[0],
+                                "reference_bottom_center_y": point[1],
                                 "confidence": float(conf),
+                                "stabilization_valid": stabilization_valid,
                                 "in_count": counts.get(self.config.counting.negative_direction_label, 0),
                                 "out_count": counts.get(self.config.counting.positive_direction_label, 0),
                                 "total_count": (
@@ -207,8 +254,10 @@ class PeopleCounter:
 
                     state.points.append(point)
                     state.sides.append(side)
+                    state.last_seen_frame = frame_idx
 
                 if writer is not None:
+                    display_line = transform_line(self.config.counting.line, reference_to_current)
                     annotated = draw_annotations(
                         frame,
                         boxes_xyxy,
@@ -218,6 +267,7 @@ class PeopleCounter:
                         frame_idx,
                         fps,
                         self.config.counting,
+                        line=display_line,
                     )
                     writer.write(annotated)
 
@@ -256,6 +306,8 @@ class PeopleCounter:
                     "confidence": self.config.model.confidence,
                     "image_size": self.config.model.image_size,
                     "process_every_n_frames": self.config.processing.process_every_n_frames,
+                    "stabilization_enabled": self.config.stabilization.enabled,
+                    "stabilization_reference_second": self.config.stabilization.reference_second,
                     "annotated_video": display_path(
                         self.config.paths.annotated_video_path,
                         self.config.paths.project_root,
