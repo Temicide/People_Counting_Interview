@@ -15,7 +15,7 @@ def test_parse_counting_line_accepts_plain_four_integer_string() -> None:
     assert parse_counting_line("330,785,870,812") == ((330, 785), (870, 812))
 
 
-def test_parse_counting_line_accepts_notebook_tuple_string() -> None:
+def test_parse_counting_line_accepts_tuple_string() -> None:
     assert parse_counting_line("((330, 785), (870, 812))") == ((330, 785), (870, 812))
 
 
@@ -38,7 +38,7 @@ def test_path_config_derives_output_paths(tmp_path: Path) -> None:
     assert paths.summary_csv_path == tmp_path / "output" / "entrance_people_count_summary.csv"
 
 
-def test_run_config_defaults_match_current_notebook_parameters() -> None:
+def test_run_config_defaults_match_current_baseline_parameters() -> None:
     config = RunConfig()
 
     assert config.counting.line == ((330, 785), (870, 812))
