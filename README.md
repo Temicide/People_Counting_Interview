@@ -122,12 +122,29 @@ The main parameters are exposed through CLI flags:
 - `--line x1,y1,x2,y2`: doorway threshold coordinates.
 - `--confidence`: YOLO detection confidence threshold.
 - `--image-size`: inference image size.
+- `--tracker`: Ultralytics tracker config, such as `bytetrack.yaml` or `botsort.yaml`.
 - `--process-every-n-frames`: frame sampling rate.
 - `--max-frames`: optional cap for quick runs.
 - `--invert-directions`: flips the `in` and `out` direction convention.
 
 If the ROI preview shows the threshold in the wrong place, adjust `--line` first.
 If visual review shows that direction labels are reversed, use `--invert-directions`.
+
+## Handheld Camera Stabilization
+
+The default line-crossing mode assumes the camera is static. For handheld videos where the doorway shifts in the frame, enable stabilization so crossing geometry is evaluated in a doorway reference frame:
+
+```bash
+entrance-counter --video resources/data/entrance.mov --output-dir output --stabilize --stabilization-reference-second 25
+```
+
+The configured `--line` is interpreted in the reference frame selected by `--stabilization-reference-second`. The annotated video projects that reference line back into each current frame. If the doorway alignment is weak or the line drifts, choose a reference second where the doorway is clear and avoid reference frames dominated by moving people.
+
+For handheld footage with identity switches, try BoT-SORT:
+
+```bash
+entrance-counter --video resources/data/entrance.mov --output-dir output --stabilize --tracker botsort.yaml
+```
 
 ## Reference Material
 
