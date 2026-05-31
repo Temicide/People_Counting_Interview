@@ -1,0 +1,52 @@
+# Python environments and caches
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+# Project-generated artifacts
+output/*
+!output/.gitkeep
+
+# Local raw media and private datasets
+resources/data/*
+!resources/data/.gitkeep
+!resources/data/README.md
+
+# Downloaded model/checkpoint files
+*.pt
+*.pth
+*.onnx
+*.engine
+*.weights
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
