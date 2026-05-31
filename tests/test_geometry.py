@@ -1,5 +1,7 @@
 from collections import deque
 
+import numpy as np
+
 from entrance_counter.config import CountingConfig
 from entrance_counter.geometry import (
     TrackState,
@@ -10,7 +12,10 @@ from entrance_counter.geometry import (
     movement_direction,
     normalized_line_side,
     projection_t,
+    reset_track_state,
     segments_intersect,
+    transform_line,
+    transform_point,
 )
 
 
@@ -87,3 +92,40 @@ def test_count_event_allowed_enforces_cooldown() -> None:
 
     assert not count_event_allowed(state, frame_idx=110, config=config)
     assert count_event_allowed(state, frame_idx=118, config=config)
+
+
+def test_transform_point_applies_affine_matrix() -> None:
+    matrix = np.array([[1.0, 0.0, 12.0], [0.0, 1.0, -5.0]], dtype=float)
+
+    assert transform_point((10.0, 20.0), matrix) == (22.0, 15.0)
+
+
+def test_transform_line_rounds_affine_transformed_endpoints() -> None:
+    matrix = np.array([[1.0, 0.0, 12.4], [0.0, 1.0, -5.2]], dtype=float)
+
+    assert transform_line(((10, 20), (30, 40)), matrix) == ((22, 15), (42, 35))
+
+
+def test_transform_point_returns_original_when_matrix_missing() -> None:
+    assert transform_point((10.0, 20.0), None) == (10.0, 20.0)
+
+
+def test_reset_track_state_clears_motion_but_preserves_count_cooldown() -> None:
+    state = TrackState(last_count_frame=100, last_direction="out")
+    state.points.append((1.0, 2.0))
+    state.sides.append(3.0)
+    state.first_frame = 10
+    state.first_point = (1.0, 2.0)
+    state.first_side = 3.0
+    state.last_seen_frame = 20
+
+    reset_track_state(state)
+
+    assert list(state.points) == []
+    assert list(state.sides) == []
+    assert state.first_frame is None
+    assert state.first_point is None
+    assert state.first_side is None
+    assert state.last_seen_frame is None
+    assert state.last_count_frame == 100
+    assert state.last_direction == "out"

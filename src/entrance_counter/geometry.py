@@ -19,6 +19,7 @@ class TrackState:
     first_side: float | None = None
     last_count_frame: int = -10_000
     last_direction: str | None = None
+    last_seen_frame: int | None = None
 
 
 def bottom_center_xy(xyxy: Iterable[float]) -> Point:
@@ -36,6 +37,38 @@ def normalized_line_side(point: Point, line: Line) -> float:
     (x1, y1), (x2, y2) = line
     length = math.hypot(x2 - x1, y2 - y1)
     return signed_line_side(point, line) / max(length, 1.0)
+
+
+def transform_point(point: Point, matrix: np.ndarray | None) -> Point:
+    if matrix is None:
+        return point
+
+    x, y = point
+    if matrix.shape == (2, 3):
+        transformed = matrix @ np.array([x, y, 1.0], dtype=float)
+        return (float(transformed[0]), float(transformed[1]))
+    if matrix.shape == (3, 3):
+        transformed = matrix @ np.array([x, y, 1.0], dtype=float)
+        scale = float(transformed[2])
+        if abs(scale) < 1e-9:
+            raise ValueError("homogeneous transform produced a zero scale")
+        return (float(transformed[0] / scale), float(transformed[1] / scale))
+    raise ValueError("matrix must have shape (2, 3) or (3, 3)")
+
+
+def transform_line(line: Line, matrix: np.ndarray | None) -> Line:
+    p1 = transform_point((float(line[0][0]), float(line[0][1])), matrix)
+    p2 = transform_point((float(line[1][0]), float(line[1][1])), matrix)
+    return ((int(round(p1[0])), int(round(p1[1]))), (int(round(p2[0])), int(round(p2[1]))))
+
+
+def reset_track_state(state: TrackState) -> None:
+    state.points.clear()
+    state.sides.clear()
+    state.first_frame = None
+    state.first_point = None
+    state.first_side = None
+    state.last_seen_frame = None
 
 
 def projection_t(point: Point, line: Line) -> float:
