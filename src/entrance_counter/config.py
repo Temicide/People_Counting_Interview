@@ -88,11 +88,37 @@ class ProcessingConfig:
 
 
 @dataclass(frozen=True)
+class StabilizationConfig:
+    enabled: bool = False
+    reference_second: float = 25.0
+    max_features: int = 1200
+    min_matches: int = 18
+    min_inlier_ratio: float = 0.35
+    max_reprojection_error: float = 4.0
+    smoothing_alpha: float = 0.25
+
+    def __post_init__(self) -> None:
+        if self.reference_second < 0:
+            raise ValueError("reference_second must be non-negative")
+        if self.max_features < 1:
+            raise ValueError("max_features must be positive")
+        if self.min_matches < 1:
+            raise ValueError("min_matches must be positive")
+        if not 0.0 <= self.min_inlier_ratio <= 1.0:
+            raise ValueError("min_inlier_ratio must be between 0 and 1")
+        if self.max_reprojection_error <= 0:
+            raise ValueError("max_reprojection_error must be positive")
+        if not 0.0 <= self.smoothing_alpha <= 1.0:
+            raise ValueError("smoothing_alpha must be between 0 and 1")
+
+
+@dataclass(frozen=True)
 class RunConfig:
     paths: PathConfig = PathConfig()
     counting: CountingConfig = CountingConfig()
     model: ModelConfig = ModelConfig()
     processing: ProcessingConfig = ProcessingConfig()
+    stabilization: StabilizationConfig = StabilizationConfig()
 
 
 def parse_counting_line(raw: str) -> Line:

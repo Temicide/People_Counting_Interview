@@ -6,6 +6,7 @@ from entrance_counter.config import (
     CountingConfig,
     PathConfig,
     RunConfig,
+    StabilizationConfig,
     display_path,
     parse_counting_line,
 )
@@ -52,6 +53,24 @@ def test_run_config_defaults_match_current_baseline_parameters() -> None:
     assert config.model.image_size == 960
     assert config.processing.process_every_n_frames == 1
     assert config.processing.max_frames is None
+
+
+def test_stabilization_config_defaults_disable_stabilization() -> None:
+    config = StabilizationConfig()
+
+    assert config.enabled is False
+    assert config.reference_second == 25.0
+    assert config.max_features == 1200
+    assert config.min_matches == 18
+    assert config.min_inlier_ratio == 0.35
+    assert config.max_reprojection_error == 4.0
+    assert config.smoothing_alpha == 0.25
+
+
+def test_run_config_contains_stabilization_config() -> None:
+    config = RunConfig()
+
+    assert config.stabilization == StabilizationConfig()
 
 
 def test_display_path_prefers_project_relative_paths(tmp_path: Path) -> None:
